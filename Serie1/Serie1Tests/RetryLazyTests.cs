@@ -10,12 +10,12 @@ namespace Serie1Tests {
 
     [TestClass]
     public class RetryLazyTests {
+
         private LinkedList<Exception> _exList;
         private RetryLazy<string> _lazy;
 
         [TestInitialize]
-        public void Setup()
-        {
+        public void Setup() {
             _exList = new LinkedList<Exception>();
         }
 
@@ -24,9 +24,9 @@ namespace Serie1Tests {
 		| Test Happy Path for one fetch
 		|--------------------------------------------------------------------------
 		*/
+
         [TestMethod]
-        public void Test_SingleFetch()
-        {
+        public void Test_SingleFetch() {
             _lazy = new RetryLazy<string>(() => "done", 1);
 
             Assert.AreSame("done", _lazy.Value);
@@ -37,6 +37,7 @@ namespace Serie1Tests {
 		| Test No more retries to fetch, should throw exceptions
 		|--------------------------------------------------------------------------
 		*/
+
         [TestMethod]
         public void Test_NoMoreRetries() {
             int retries = 3;
@@ -66,9 +67,9 @@ namespace Serie1Tests {
 		| Test Multiple Threads (with delay)
 		|--------------------------------------------------------------------------
 		*/
+
         [TestMethod]
-        public void Test_MultipleThreadsWithSomeDelay()
-        {
+        public void Test_MultipleThreadsWithSomeDelay() {
             int threads = 50;
             int count = 0;
             int retries = 10;
@@ -79,19 +80,15 @@ namespace Serie1Tests {
                     throw new Exception("I'm mad..");
 
                 return "done";
-            }, retries+1);
+            }, retries + 1);
 
 
             List<Thread> thList = new List<Thread>(threads);
-            for (int i = 0; i < threads; i++)
-            {
+            for (int i = 0; i < threads; i++) {
                 thList.Add(new Thread(() => {
-                    try
-                    {
+                    try {
                         Assert.AreEqual("done", _lazy.Value);
-                    }
-                    catch (Exception e)
-                    {
+                    } catch (Exception e) {
                         _exList.AddLast(e);
                     }
                 }));
@@ -102,5 +99,7 @@ namespace Serie1Tests {
 
             Assert.AreEqual(retries, _exList.Count);
         }
+
     }
+
 }

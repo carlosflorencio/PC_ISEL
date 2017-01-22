@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 
 namespace Serie1 {
+
     public class RetryLazy<T> where T : class {
+
         private readonly Func<T> _provider;
         private int _maxRetries;
         private T _result;
@@ -39,14 +41,13 @@ namespace Serie1 {
                                     _queue.Remove(node);
                                     break;
                                 }
-                                    
                             } catch (ThreadInterruptedException) {
                                 _queue.Remove(node);
                                 ConditionalNotifyAll();
                                 throw;
                             }
                         } while (true);
-                        
+
 
                         if (_result != null) {
                             ConditionalNotifyAll();
@@ -58,7 +59,6 @@ namespace Serie1 {
                             ConditionalNotifyAll();
                             throw new InvalidOperationException();
                         }
-                            
                     }
 
                     _isBeingResolved = true;
@@ -92,5 +92,7 @@ namespace Serie1 {
             if (_queue.Count > 0)
                 Monitor.PulseAll(_lock);
         }
+
     }
+
 }
