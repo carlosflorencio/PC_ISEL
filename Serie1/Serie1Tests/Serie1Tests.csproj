@@ -55,6 +55,7 @@
     <Compile Include="ExchangerTests.cs" />
     <Compile Include="RetryLazyTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ThrottledRegionTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Serie1\Serie1.csproj">
