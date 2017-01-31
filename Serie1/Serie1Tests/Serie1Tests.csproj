@@ -52,6 +52,7 @@
     </Otherwise>
   </Choose>
   <ItemGroup>
+    <Compile Include="BusTests.cs" />
     <Compile Include="ExchangerTests.cs" />
     <Compile Include="RetryLazyTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
