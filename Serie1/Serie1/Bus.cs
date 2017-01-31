@@ -35,7 +35,7 @@ namespace Serie1 {
 
                 do {
                     try {
-                        SyncUtils.Wait(_lock, node.Value);
+                        SyncUtils.Wait(_lock, map[typeof(T)]);
 
                         var myEvent = node.Value as Event<T>;
 
@@ -94,6 +94,7 @@ namespace Serie1 {
                 if (map.TryGetValue(typeof(T), out events) == false)
                     return; // we dont have handlers yet, ignore
 
+                bool notified = false;
                 foreach (var e in events)
                 {
                     var singleEvent = e as Event<T>;
@@ -102,8 +103,10 @@ namespace Serie1 {
                         continue; // no space to save the message
 
                     singleEvent.Messages.AddLast(message);
-                    SyncUtils.Notify(_lock, singleEvent); // notify the subscribed thread
+                    notified = true;
                 }
+
+                if(notified) SyncUtils.Broadcast(_lock, map[typeof(T)]);
             }
         }
 
@@ -121,9 +124,7 @@ namespace Serie1 {
 
                 foreach (KeyValuePair<Type, LinkedList<object>> entry in map)
                 {
-                    foreach (var o in entry.Value) { // notify all thread handlers
-                        SyncUtils.Notify(_lock, o);
-                    }
+                    SyncUtils.Broadcast(_lock, entry.Value); // notify all thread handlers
                 }
 
                 try {
