@@ -13,7 +13,7 @@ namespace Serie1 {
         private int _inside;
         private int _maxWaiting;
         private int _timeout;
-        public LinkedList<int> WaitingQueue = new LinkedList<int>();
+        public LinkedList<bool> WaitingQueue = new LinkedList<bool>();
         private readonly object _lock = new object();
 
         public Region(int maxInside, int maxWaiting, int timeout) {
@@ -86,15 +86,20 @@ namespace Serie1 {
                     return; // wtf? we must have the region!!
                 }
 
-                if (region.IsEmptyInside(_maxInside) == false)
+                if (!region.IsEmptyInside(_maxInside)) { // region is empty inside?
                     region.Leave();
+                }
 
-                ContidionalNotify(region);
+                LinkedListNode<bool> first = region.WaitingQueue.First;
+                if (first != null) { // someone is waiting?
+                    first.Value = true; // green light to go when wake up
+                    SyncUtils.Notify(_lock, first);
+                }
             }
         }
 
         /*
-		|--------------------------------------------------------------------------
+        |--------------------------------------------------------------------------
 		| Logic
 		|--------------------------------------------------------------------------
 		*/
@@ -112,24 +117,22 @@ namespace Serie1 {
                 return false; //no space to wait, sorry bro
             }
 
-            var node = region.WaitingQueue.AddLast(Thread.CurrentThread.ManagedThreadId);
+            var node = region.WaitingQueue.AddLast(false);
             int timeout = _waitTimeout;
             int lastTime = (timeout != Timeout.Infinite) ? Environment.TickCount : 0;
 
             do {
                 try {
-                    SyncUtils.Wait(_lock, region, timeout);
+                    SyncUtils.Wait(_lock, node, timeout);
                 } catch (ThreadInterruptedException e) {
                     region.WaitingQueue.Remove(node);
-                    ContidionalNotify(region);
+
                     throw;
                 }
 
-                // our turn? (FIFO)
-                if (node == region.WaitingQueue.First && !region.IsFullInside()) {
+                if (node.Value) { // green light?
                     region.WaitingQueue.Remove(node);
                     region.Enter();
-                    ContidionalNotify(region);
 
                     return true;
                 }
@@ -137,17 +140,10 @@ namespace Serie1 {
                 // out of time?
                 if (SyncUtils.AdjustTimeout(ref lastTime, ref timeout) == 0) {
                     region.WaitingQueue.Remove(node);
-                    ContidionalNotify(region);
                     return false;
                 }
             } while (true);
         }
-
-        private void ContidionalNotify(Region region) {
-            if (region.WaitingQueue.Count > 0)
-                SyncUtils.Broadcast(_lock, region);
-        }
-
     }
 
 }

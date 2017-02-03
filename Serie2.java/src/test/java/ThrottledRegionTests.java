@@ -1,191 +1,103 @@
-import org.junit.Before;
+import org.junit.Assert;
 import org.junit.Test;
-
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.Assert.*;
 
 public class ThrottledRegionTests {
 
-    public ThrottledRegion region;
-    public Queue<Exception> exceptionQueue;
-
-    public final int ID1 = 1;
-    public final int ID2 = 2;
-
-    @Before
-    public void setUp() {
-        region = new ThrottledRegion(2, 2, 300000);
-        exceptionQueue = new LinkedList<>();
-    }
-
-    public void EnterRegionSuccessfully() {
+    public void TryEnterSuccess(ThrottledRegion region, int key) {
         try {
-            if (!region.tryEnter(ID1)) {
-                fail();
-            }
+            Assert.assertTrue(region.tryEnter(key));
         } catch (InterruptedException e) {
-            exceptionQueue.add(e);
+            Assert.fail();
         }
     }
 
-    public void CannotEnterRegion() {
+    public void TryEnterFail(ThrottledRegion region, int key) {
         try {
-            if (region.tryEnter(ID1)) {
-                fail();
-            }
+            Assert.assertFalse(region.tryEnter(key));
         } catch (InterruptedException e) {
-            exceptionQueue.add(e);
+            Assert.fail();
         }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Test Happy Path
+    |--------------------------------------------------------------------------
+    */
     @Test
-    public void SimpleThrottledRegionTest() throws Exception {
-        Thread t1 = new Thread(this::EnterRegionSuccessfully);
-        Thread t2 = new Thread(this::EnterRegionSuccessfully);
-        Thread t3 = new Thread(this::EnterRegionSuccessfully);
+    public void Test_HappyPath() throws InterruptedException {
+        ThrottledRegion region = new ThrottledRegion(2, 2, 1 << 30);
+        int key = 1;
+        Thread t1 = new Thread(() -> TryEnterSuccess(region, key)); // enter
+        Thread t2 = new Thread(() -> TryEnterSuccess(region, key)); // enter
+        Thread t3 = new Thread(() -> TryEnterSuccess(region, key)); // wait
 
         t1.start();
         t2.start();
         t1.join();
         t2.join();
-        region.leave(ID1);
         t3.start();
+        Thread.sleep(1000); // make sure t3 is waiting
+        region.leave(key); // t3 can enter
         t3.join();
-
-        assertEquals(0, exceptionQueue.size());
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Test Timeout return
+    |--------------------------------------------------------------------------
+    */
     @Test
-    public void SimpleThrottledRegionFailByTimeoutTest() throws Exception {
-        Thread t1 = new Thread(this::EnterRegionSuccessfully);
-        Thread t2 = new Thread(this::EnterRegionSuccessfully);
-        Thread t3 = new Thread(() -> {
-            try {
-                long past = System.currentTimeMillis();
-                if (region.tryEnter(ID1)) {
-                    fail();
-                }
-                long now = System.currentTimeMillis();
-
-                assertTrue((now - past) > 300000);
-            } catch (InterruptedException e) {
-                exceptionQueue.add(e);
-            }
-        });
+    public void Test_Timeout() throws InterruptedException {
+        ThrottledRegion region = new ThrottledRegion(2, 2, 1000);
+        int key = 1;
+        Thread t1 = new Thread(() -> TryEnterSuccess(region, key)); // enter
+        Thread t2 = new Thread(() -> TryEnterSuccess(region, key)); // enter
+        Thread t3 = new Thread(() -> TryEnterFail(region, key)); // wait
 
         t1.start();
         t2.start();
         t1.join();
         t2.join();
         t3.start();
+        Thread.sleep(3000); // make sure t3 gets the timeout
         t3.join();
-        assertEquals(0, exceptionQueue.size());
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Test Max inside in two regions
+    |--------------------------------------------------------------------------
+    */
     @Test
-    public void SimpleThrottledRegionFailByMaxWaitingTest() throws Exception {
-        region = new ThrottledRegion(2, 2, 100000);
-        Thread t1 = new Thread(this::EnterRegionSuccessfully);
-        Thread t2 = new Thread(this::EnterRegionSuccessfully);
-        Thread t3 = new Thread(this::EnterRegionSuccessfully);
-        Thread t4 = new Thread(this::EnterRegionSuccessfully);
-        Thread t5 = new Thread(() ->
-        {
-            try {
-                long past = System.currentTimeMillis();
-                if (region.tryEnter(ID1)) {
-                    fail();
-                }
-                long now = System.currentTimeMillis();
+    public void Test_MaxInsideInTwoRegions() throws InterruptedException {
+        ThrottledRegion region = new ThrottledRegion(1, 1, 1 << 30);
+        int key = 1;
+        int key2 = 2;
+        Thread t1 = new Thread(() -> TryEnterSuccess(region, key)); // enter region1
+        Thread t2 = new Thread(() -> TryEnterSuccess(region, key)); // wait region1
+        Thread t3 = new Thread(() -> TryEnterFail(region, key)); // Fail region1
 
-                assertTrue((now - past) < 300000);
-            } catch (InterruptedException e) {
-                exceptionQueue.add(e);
-            }
-        });
+        Thread t4 = new Thread(() -> TryEnterSuccess(region, key2)); // enter region2
+        Thread t5 = new Thread(() -> TryEnterSuccess(region, key2)); // wait region2
+        Thread t6 = new Thread(() -> TryEnterFail(region, key2)); // fail region2
 
         t1.start();
-        t2.start();
         t1.join();
-        t2.join();
+        t2.start(); // will wait
+        Thread.sleep(100); //give some time to run before the t3
         t3.start();
+        t3.join();
+        region.leave(key);
+        t2.join();
+
         t4.start();
-        Thread.sleep(1000);
-        t5.start();
-        t5.join();  // Assert.Fail()
-        region.leave(ID1);
-        region.leave(ID1);
-        t3.join();
         t4.join();
-        assertEquals(0, exceptionQueue.size());
-    }
-
-    @Test
-    public void InterruptedThreadThrowsTIETest() throws Exception {
-        assertTrue(region.tryEnter(ID1));
-        assertTrue(region.tryEnter(ID1));
-
-        Thread t = new Thread(() -> {
-            try {
-                region.tryEnter(ID1);
-            } catch (InterruptedException e) {
-                exceptionQueue.add(e);
-            }
-        });
-
-        t.start();
-        t.interrupt();
-        t.join();
-
-        assertEquals(1, exceptionQueue.size());
-        assertEquals(InterruptedException.class, exceptionQueue.poll().getClass());
-    }
-
-    @Test
-    public void MultipleThreadsInsideForDifferentKeysTest() throws Exception {
-        region = new ThrottledRegion(1, 1, 1<<30);
-
-        List<Thread> threads = new LinkedList<>();
-
-        // add 2 threads for key 1 assert both enter
-        // add 2 threads for key 2 assert both enter
-        for (int i = 0; i < 2; i++) {
-            threads.add(new Thread(() -> {
-                try {
-                    assertTrue(region.tryEnter(1));
-                    Thread.sleep(100);
-                } catch (Exception e) {
-                    exceptionQueue.add(e);
-                } finally {
-                    region.leave(1);
-                }
-            }));
-            threads.add(new Thread(() -> { // should not wait and enter immediately
-                try {
-                    assertTrue(region.tryEnter(2));
-                    Thread.sleep(100);
-                } catch (Exception e) {
-                    exceptionQueue.add(e);
-                } finally {
-                    region.leave(2);
-                }
-            }));
-        }
-
-        threads.forEach(Thread::start);
-        Thread.sleep(500);
-        threads.forEach(t -> {
-            try {
-                t.join();
-            } catch (InterruptedException e) {
-                exceptionQueue.add(e);
-            }
-        });
-
-        assertEquals(0, exceptionQueue.size());
+        t5.start(); // will wait
+        Thread.sleep(100); //give some time to run before the t6
+        t6.start();
+        t6.join();
+        region.leave(key2);
+        t5.join();
     }
 }

@@ -54,6 +54,7 @@
   <ItemGroup>
     <Compile Include="ConcurrentQueueTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ThrottledRegionTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Serie2\Serie2.csproj">

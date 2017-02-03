@@ -1,6 +1,7 @@
 import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -66,13 +67,14 @@ public class ThrottledRegion {
                     try {
                         timeout = item.condition.awaitNanos(timeout);
                     } catch (InterruptedException e) {
+                        _waitingCount -= 1;
+                        _waitingQueue.remove(item);
+
                         if (item.done) {
                             Thread.currentThread().interrupt();
                             return true;
                         }
 
-                        _waitingCount -= 1;
-                        _waitingQueue.remove(item);
                         throw e;
                     }
 
@@ -152,7 +154,7 @@ public class ThrottledRegion {
     public ThrottledRegion(int maxInside, int maxWaiting, int waitTimeout) {
         this._maxInside = maxInside;
         this._maxWaiting = maxWaiting;
-        this._waitTimeout = waitTimeout; // convert millis to seconds?
+        this._waitTimeout = waitTimeout;
     }
 
     public boolean tryEnter(int key) throws InterruptedException {

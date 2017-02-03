@@ -4,40 +4,29 @@ using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Serie2;
 
-namespace Serie2Tests
-{
+namespace Serie2Tests {
+
     [TestClass]
-    public class ConcurrentQueueTest
-    {
-        private static void sleepUninterruptibly(int milliseconds)
-        {
+    public class ConcurrentQueueTest {
+
+        private static void sleepUninterruptibly(int milliseconds) {
             int expiresAt = Environment.TickCount + milliseconds;
-            do
-            {
-                try
-                {
+            do {
+                try {
                     Thread.Sleep(milliseconds);
                     break;
-                }
-                catch (ThreadInterruptedException ie)
-                {
-                }
+                } catch (ThreadInterruptedException ie) {}
+
                 milliseconds = expiresAt - Environment.TickCount;
             } while (milliseconds > 0);
         }
 
-        private static bool joinUninterruptibly(Thread toJoin, int timeout)
-        {
-            do
-            {
-                try
-                {
+        private static bool joinUninterruptibly(Thread toJoin, int timeout) {
+            do {
+                try {
                     toJoin.Join(timeout);
                     return !toJoin.IsAlive;
-                }
-                catch (ThreadInterruptedException ie)
-                {
-                }
+                } catch (ThreadInterruptedException ie) {}
             } while (true);
         }
 
@@ -45,8 +34,7 @@ namespace Serie2Tests
         // Test method.
         //
 
-        public static bool testMichaelScottQueue()
-        {
+        public static bool testMichaelScottQueue() {
             int CONSUMER_THREADS = 2;
             int PRODUCER_THREADS = 1;
             int MAX_PRODUCE_INTERVAL = 100;
@@ -69,22 +57,17 @@ namespace Serie2Tests
             Trace.WriteLine(default(string));
 
             // create and start the consumer threads.		
-            for (int i = 0; i < CONSUMER_THREADS; i++)
-            {
+            for (int i = 0; i < CONSUMER_THREADS; i++) {
                 int tid = i;
-                consumers[i] = new Thread(() =>
-                {
+                consumers[i] = new Thread(() => {
                     Random rnd = new Random(Thread.CurrentThread.ManagedThreadId);
                     int count = 0;
 
                     Trace.WriteLine("-->c#" + tid + " starts...\n");
-                    do
-                    {
-                        try
-                        {
+                    do {
+                        try {
                             String data = msqueue.Take();
-                            if (!data.Equals("hello"))
-                            {
+                            if (!data.Equals("hello")) {
                                 failuresDetected[tid]++;
                                 Trace.WriteLine("[f#" + tid + "]");
                             }
@@ -96,9 +79,7 @@ namespace Serie2Tests
 
                             if (MAX_CONSUME_TIME > 0)
                                 Thread.Sleep(rnd.Next(MAX_CONSUME_TIME));
-                        }
-                        catch (ThreadInterruptedException ie)
-                        {
+                        } catch (ThreadInterruptedException ie) {
                             //do {} while (tid == 0);
                             break;
                         }
@@ -114,25 +95,19 @@ namespace Serie2Tests
             }
 
             // create and start the producer threads.		
-            for (int i = 0; i < PRODUCER_THREADS; i++)
-            {
+            for (int i = 0; i < PRODUCER_THREADS; i++) {
                 int tid = i;
-                producers[i] = new Thread(() =>
-                {
+                producers[i] = new Thread(() => {
                     Random rnd = new Random(Thread.CurrentThread.ManagedThreadId);
                     int count = 0;
 
                     Trace.WriteLine("-->p#" + tid + " starts...\n");
-                    do
-                    {
+                    do {
                         String data;
 
-                        if (rnd.Next(100) >= FAILURE_PERCENT)
-                        {
+                        if (rnd.Next(100) >= FAILURE_PERCENT) {
                             data = "hello";
-                        }
-                        else
-                        {
+                        } else {
                             data = "HELLO";
                             failuresInjected[tid]++;
                         }
@@ -146,12 +121,9 @@ namespace Serie2Tests
 
                         // production interval.
 
-                        try
-                        {
+                        try {
                             Thread.Sleep(rnd.Next(MAX_PRODUCE_INTERVAL));
-                        }
-                        catch (ThreadInterruptedException ie)
-                        {
+                        } catch (ThreadInterruptedException ie) {
                             //do {} while (tid == 0);
                             break;
                         }
@@ -172,30 +144,26 @@ namespace Serie2Tests
 
             // interrupt all producer threads and wait for for until each one finished. 
             int stillRunning = 0;
-            for (int i = 0; i < PRODUCER_THREADS; i++)
-            {
+            for (int i = 0; i < PRODUCER_THREADS; i++) {
                 producers[i].Interrupt();
                 if (!joinUninterruptibly(producers[i], JOIN_TIMEOUT))
                     stillRunning++;
             }
 
             // wait until the queue is empty 
-            while (!msqueue.IsEmpty())
-            {
+            while (!msqueue.IsEmpty()) {
                 sleepUninterruptibly(POLL_INTERVAL);
             }
 
             // interrupt each consumer thread and wait for a while until each one finished.
-            for (int i = 0; i < CONSUMER_THREADS; i++)
-            {
+            for (int i = 0; i < CONSUMER_THREADS; i++) {
                 consumers[i].Interrupt();
                 if (!joinUninterruptibly(consumers[i], JOIN_TIMEOUT))
                     stillRunning++;
             }
 
             // if any thread failed to fisnish, something is wrong.
-            if (stillRunning > 0)
-            {
+            if (stillRunning > 0) {
                 Trace.WriteLine("\n*** failure: " + stillRunning + " thread(s) did answer to interrupt\n");
                 return false;
             }
@@ -203,18 +171,19 @@ namespace Serie2Tests
             // compute and display the results.
 
             long sumProductions = 0, sumFailuresInjected = 0;
-            for (int i = 0; i < PRODUCER_THREADS; i++)
-            {
+            for (int i = 0; i < PRODUCER_THREADS; i++) {
                 sumProductions += productions[i];
                 sumFailuresInjected += failuresInjected[i];
             }
+
             long sumConsumptions = 0, sumFailuresDetected = 0;
-            for (int i = 0; i < CONSUMER_THREADS; i++)
-            {
+            for (int i = 0; i < CONSUMER_THREADS; i++) {
                 sumConsumptions += consumptions[i];
                 sumFailuresDetected += failuresDetected[i];
             }
-            Trace.WriteLine("\n\n<-- successful: " + sumProductions + "/" + sumConsumptions + ", failed: " + sumFailuresInjected + "/" + sumFailuresDetected + "\n");
+
+            Trace.WriteLine("\n\n<-- successful: " + sumProductions + "/" + sumConsumptions + ", failed: " +
+                            sumFailuresInjected + "/" + sumFailuresDetected + "\n");
             Assert.AreEqual(sumProductions, sumConsumptions);
             Assert.AreEqual(sumFailuresInjected, sumFailuresDetected);
 
@@ -222,9 +191,10 @@ namespace Serie2Tests
         }
 
         [TestMethod]
-        public void TestMichaelScottQueue()
-        {
+        public void TestMichaelScottQueue() {
             Assert.IsTrue(testMichaelScottQueue());
         }
+
     }
+
 }
