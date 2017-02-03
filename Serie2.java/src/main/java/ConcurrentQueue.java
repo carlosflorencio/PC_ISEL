@@ -3,7 +3,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ConcurrentQueue<T> {
 
     private static class Node<T> {
-        final T item;
+        public final T item;
         public final AtomicReference<Node<T>> next;
 
         public Node(T item, Node<T> next) {
@@ -13,8 +13,8 @@ public class ConcurrentQueue<T> {
     }
 
     private final Node<T> dummy = new Node<T>(null, null);
-    private final AtomicReference<Node<T>> head = new AtomicReference<Node<T>>(dummy);
-    private final AtomicReference<Node<T>> tail = new AtomicReference<Node<T>>(dummy);
+    private final AtomicReference<Node<T>> head = new AtomicReference<>(dummy);
+    private final AtomicReference<Node<T>> tail = new AtomicReference<>(dummy);
     // head and tail pointing to the same object
 
     public void put(T item) {
@@ -50,7 +50,7 @@ public class ConcurrentQueue<T> {
                         return null; // Queue is empty, couldn’t dequeue
 
                     tail.compareAndSet(tailCur, headNext); // Tail is falling behind. Try to advance it
-                } else { // No need to deal with Tail
+                } else   { // No need to deal with Tail
                     // Read value before CAS, otherwise another dequeue might free the next node
                     T val = headNext.item;
 
