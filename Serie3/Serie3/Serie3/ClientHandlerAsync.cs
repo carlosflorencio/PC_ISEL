@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,33 +12,40 @@ namespace Serie3 {
 
     class ClientHandlerAsync {
 
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> map =
+            new ConcurrentDictionary<string, SemaphoreSlim>();
+
+        private const int MaxRequestsInRegion = 1;
+
         /*
         |--------------------------------------------------------------------------
         | Read Async
         |--------------------------------------------------------------------------
         */
 
-        public static void StartReadAsync(ConnectionState state) {
-            Log(state.clientId, "Started Reading");
-            state.stream.BeginRead(state.buffer, 0, state.buffer.Length, EndReadAsync, state);
+        public static void BeginReadSocket(ConnectionState state) {
+            state.stream.BeginRead(state.buffer, 0, state.buffer.Length, EndReadSocket, state);
         }
 
-        public static void EndReadAsync(IAsyncResult ar) {
+        private static void EndReadSocket(IAsyncResult ar) {
             var state = (ConnectionState) ar.AsyncState;
 
             try {
+                // The BeginRead method reads as much data as is available, 
+                // up to the number of bytes specified by the size parameter.
+                // Since our buffer is larger than the longest client message,
+                // we dont need to read again
                 var len = state.stream.EndRead(ar);
-                Log(state.clientId, "End reading " + len + " bytes!");
 
-                if (len == 0) { // client disconnected
-                    Log(state.clientId, $"Client is disconnected");
+                if (len <= 0) { // client disconnected
+                    Log(state, $"Client is disconnected");
                     ClientDisconnect(state);
                     return;
                 }
 
                 var line = Encoding.ASCII.GetString(state.buffer, 0, len).Trim();
 
-                Log(state.clientId, $"Received {line}");
+                Log(state, $"Received {line}");
                 var parts = line.Split(' ');
                 if (parts.Length != 2) {
                     StartWriteAsync("nack: invalid command", state);
@@ -52,7 +60,7 @@ namespace Serie3 {
                 }
             } catch (IOException e) {
                 // The socket was closed!
-                Log(state.clientId, "Exception: {0}", e);
+                Log(state, "Exception: {0}", e);
                 ClientDisconnect(state);
             }
         }
@@ -62,23 +70,23 @@ namespace Serie3 {
         | Write Async
         |--------------------------------------------------------------------------
         */
-        public static void StartWriteAsync(string msg, ConnectionState state) {
+        private static void StartWriteAsync(string msg, ConnectionState state) {
             var bytes = Encoding.ASCII.GetBytes(msg + Environment.NewLine);
 
             state.stream.BeginWrite(bytes, 0, bytes.Length, EndWriteAsync, state);
         }
 
-        public static void EndWriteAsync(IAsyncResult ar) {
+        private static void EndWriteAsync(IAsyncResult ar) {
             var state = (ConnectionState) ar.AsyncState;
 
             try {
                 state.stream.EndWrite(ar);
 
-                StartReadAsync(state);
+                BeginReadSocket(state);
 
             } catch (IOException e) {
                 // The socket was closed!
-                Log(state.clientId, "Exception: {0}", e);
+                Log(state, "Exception: {0}", e);
                 ClientDisconnect(state);
             }
         }
@@ -100,7 +108,8 @@ namespace Serie3 {
             }
 
             state.stream.Close();
-            Log(state.clientId, "client ended");
+            state.client.Close();
+            Log(state, "client ended");
             // state object will eventually be garbage collected
         }
 
@@ -111,23 +120,23 @@ namespace Serie3 {
         */
 
         private static void HandleCommand(string command, string key, ConnectionState state) {
-            var semaphore = state.map.GetOrAdd(key, _ => new SemaphoreSlim(state.maxRequestsInRegion));
+            var semaphore = map.GetOrAdd(key, _ => new SemaphoreSlim(MaxRequestsInRegion));
             if (command == "enter") {
                 // This will block until the client can enter the region
                 semaphore.Wait();
                 state.acquiredKeys.Add(key);
-                Log(state.clientId, $"Acquired key {key}");
+                Log(state, $"Acquired key {key}");
             } else if (command == "leave") {
                 semaphore.Release();
                 state.acquiredKeys.Remove(key);
-                Log(state.clientId, $"Released key {key}");
+                Log(state, $"Released key {key}");
             } else {
                 throw new CommandException("unknown command");
             }
         }
 
-        private static void Log(int id, string fmt, params object[] prms) {
-            Server.Log($"[{id}]" + string.Format(fmt, prms));
+        private static void Log(ConnectionState state, string fmt, params object[] prms) {
+           state.log.Add($"[{state.id}]" + string.Format(fmt, prms));
         }
 
     }

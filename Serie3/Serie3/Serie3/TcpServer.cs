@@ -16,100 +16,134 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Text;
 using System.Threading;
 
-namespace Serie3
-{
+namespace Serie3 {
 
-    class ConnectionState
-    {
+    class ConnectionState {
 
-        // Connection Info
-        public readonly ManualResetEventSlim acceptDone;
-        public readonly TcpListener listener;
-        public TcpClient client;
-        public NetworkStream stream;
-
-        // Throttled Region Info
-        public readonly ConcurrentDictionary<string, SemaphoreSlim> map;
-        public readonly int maxRequestsInRegion;
-
-        // Client Info
-        public readonly int clientId;
-        public readonly ISet<string> acquiredKeys;
+        public readonly TcpClient client;
+        public readonly int id;
+        public readonly ISet<string> acquiredKeys = new HashSet<string>();
+        public readonly NetworkStream stream;
 
         // Temporary Buffer for reads
         public byte[] buffer = new byte[4 * 1204];
+        public LoggerThread log;
 
-        public ConnectionState(int cid, ManualResetEventSlim e, TcpListener l,
-            ConcurrentDictionary<string, SemaphoreSlim> m, int maxRequests)
-        {
-            this.clientId = cid;
-            this.acceptDone = e;
-            this.listener = l;
-            this.map = m;
-            this.maxRequestsInRegion = maxRequests;
-            this.acquiredKeys = new HashSet<string>();
+        public StringBuilder sb = new StringBuilder();
+
+        public ConnectionState(int cid, TcpClient c, LoggerThread logger) {
+            this.id = cid;
+            this.log = logger;
+            this.client = c;
+            this.stream = this.client.GetStream();
         }
+
     }
 
-    class Server
-    {
-        private static readonly ConcurrentDictionary<string, SemaphoreSlim> map =
-            new ConcurrentDictionary<string, SemaphoreSlim>();
+    class ThrottledRegion {
 
-        private static readonly ManualResetEventSlim acceptDone = new ManualResetEventSlim(false);
+        public SemaphoreSlim Semaphore;
+        public volatile int WaitingCount;
 
-        private const int MaxRequestsInRegion = 1;
-        private const string LocalIp = "0.0.0.0";
+    }
+
+    class Server {
+
+        // Constants
+        private const int MaxNestedIoCallbacks = 10;
+        private const int MaxActiveConnections = 101;
         private const int LocalPort = 8888;
+        private const string LocalIp = "0.0.0.0";
 
+        // Count the number of nested accept callbacks on each thread
+        private static ThreadLocal<int> rcounter = new ThreadLocal<int>();
+
+        // Number of active connections and the maximum allowed.
+        private static int activeConnections;
+
+        // Client id (0, 1, 2, 3..) Incremented with Interlocked
+        private static int currentClientId;
+
+        // Logger Thread
+        private LoggerThread logger;
+
+
+        public Server(LoggerThread logger) {
+            this.logger = logger;
+        }
 
         /*
         |--------------------------------------------------------------------------
         | Run: Accept Connections Async
         |--------------------------------------------------------------------------
         */
-        private static ThreadLocal<int> rcounter = new ThreadLocal<int>();
-        public static void Run()
-        {
-            Log(
-                $"MAIN THREAD: ThreadPool: {Thread.CurrentThread.IsThreadPoolThread} ThreadId: {Thread.CurrentThread.ManagedThreadId}");
-            var cid = 0;
-            var listener = new TcpListener(IPAddress.Parse(LocalIp), LocalPort);
-            listener.Start();
-            Log($"Server is listening on {LocalIp}:{LocalPort}");
 
+        public void Run() {
+            var server = new TcpListener(IPAddress.Parse(LocalIp), LocalPort);
 
-            AsyncCallback onAcceptEntryPoint = delegate(IAsyncResult ar) {
+            BeginListen(server);
+            logger.Add($"Server is listening on {LocalIp}:{LocalPort}");
+
+            Console.WriteLine("Press <enter> to shutdown the server...");
+            Console.ReadLine();
+
+            server.Stop();
+        }
+
+        private void BeginListen(TcpListener server) {
+            server.Start(); // start listen for clients
+
+            AsyncCallback onAcceptProcessing = null;
+
+            // Fix recursive calls
+            AsyncCallback onAcceptEntryPoint = ar => {
+                logger.Add("!!!!!!!!!!!Sincrono: " + ar.CompletedSynchronously + " " + Thread.CurrentThread.ManagedThreadId);
                 if (!ar.CompletedSynchronously) {
-                    AcceptCallback(ar);
+                    onAcceptProcessing(ar);
                 } else {
+                    logger.Add("!!!!!!!!! ASSINCRONO");
                     rcounter.Value += 1;
-                    if (rcounter.Value > 10) {
-                        ThreadPool.QueueUserWorkItem(_ => { AcceptCallback(ar); });
+                    if (rcounter.Value > MaxNestedIoCallbacks) {
+                        logger.Add("!!!!!!!!!!MAX NESTED CALLBACKS!!! " + rcounter.Value);
+                        ThreadPool.QueueUserWorkItem(_ => { onAcceptProcessing(ar); });
                     } else {
-                        AcceptCallback(ar);
+                        onAcceptProcessing(ar);
                     }
                     rcounter.Value -= 1;
                 }
             };
 
+            // Process accept
+            onAcceptProcessing = ar => {
+                var client = server.EndAcceptTcpClient(ar);
+                logger.Add($"Client accepted with id {currentClientId}");
 
-                while (true)
-            {
-                // Set the event to nonsignaled state.  
-                acceptDone.Reset();
+                logger.Add(
+                    $"ThreadPool: {Thread.CurrentThread.IsThreadPoolThread} ThreadId: {Thread.CurrentThread.ManagedThreadId}");
 
-                // Create some state for this connection
-                var state = new ConnectionState(cid++, acceptDone, listener, map, MaxRequestsInRegion);
+                int c = Interlocked.Increment(ref activeConnections);
+                if (c < MaxActiveConnections) {
+                    server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
+                }
 
-                Log("Waiting for a connection..");
-                listener.BeginAcceptTcpClient(onAcceptEntryPoint, state);
+                // Handle this client
+                var state = new ConnectionState(currentClientId, client, logger);
+                ClientHandlerAsync.BeginReadSocket(state);
 
-                // Wait until a connection is made before continuing.  
-                acceptDone.Wait();
-            }
+
+                Interlocked.Increment(ref currentClientId);
+
+                c = Interlocked.Decrement(ref activeConnections);
+                if (c == MaxActiveConnections - 1) {
+                    server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
+                }
+            };
+
+            // First accept
+            server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
         }
 
         /*
@@ -118,52 +152,18 @@ namespace Serie3
         |--------------------------------------------------------------------------
         */
 
-        private static void AcceptCallback(IAsyncResult ar)
-        {
-            // Get the socket that handles the client request.
-            var state = (ConnectionState)ar.AsyncState;
-            var client = state.listener.EndAcceptTcpClient(ar);
-            Log($"Client accepted with id {state.clientId}");
-
-            // Signal the main thread to continue.
-            state.acceptDone.Set();
-
-            Log(
-                $"ThreadPool: {Thread.CurrentThread.IsThreadPoolThread} ThreadId: {Thread.CurrentThread.ManagedThreadId}");
-
-            // Update the state
-            state.client = client;
-            state.stream = client.GetStream();
-
-            // Read the socket async
-            ClientHandlerAsync.StartReadAsync(state);
-        }
-
-        public static volatile int counter = 0;
-
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Log: Add messages to the logger thread
-        |--------------------------------------------------------------------------
-        */
-
-        public static void Log(string fmt, params object[] prms)
-        {
-            Console.WriteLine(string.Format(fmt, prms));
-        }
-
     }
 
 
-    class ServerProgram
-    {
+    class ServerProgram {
 
-        public static void Main(string[] args)
-        {
-            Server.Run();
-            // server.Run never returns 
+        public static void Main(string[] args) {
+            var logger = new LoggerThread();
+            logger.Start();
+            var server = new Server(logger);
+
+            server.Run();
+            // logger thread will finish with the process
         }
 
     }
