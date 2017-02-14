@@ -19,7 +19,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading;
 
-namespace Serie3 {
+namespace ServidorAPM {
 
     class ConnectionState {
 
@@ -110,9 +110,6 @@ namespace Serie3 {
                     var client = server.EndAcceptTcpClient(ar);
                     logger.Add($"Client accepted with id {currentClientId}");
 
-                    logger.Add(
-                        $"ThreadPool: {Thread.CurrentThread.IsThreadPoolThread} ThreadId: {Thread.CurrentThread.ManagedThreadId}");
-
                     int c = Interlocked.Increment(ref activeConnections);
                     if (c < MaxActiveConnections) {
                         server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
@@ -151,7 +148,6 @@ namespace Serie3 {
     class ServerProgram {
 
         public static void Main(string[] args) {
-
             var logger = new LoggerThread();
             logger.Start();
 

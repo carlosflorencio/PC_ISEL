@@ -4,12 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Serie3 {
+namespace ServidorAPM {
 
     class CommandException : Exception {
 
         public CommandException(string msg)
-            : base(msg) {}
+            : base(msg) {
+        }
 
     }
 

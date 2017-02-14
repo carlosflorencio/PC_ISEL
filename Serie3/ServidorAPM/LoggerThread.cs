@@ -4,24 +4,24 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-namespace Serie3
-{
-    internal class LoggerThread
-    {
+namespace ServidorAPM {
+
+    internal class LoggerThread {
+
         // Thread safe ConcurrentQueue with blocking functionality
         private BlockingCollection<string> _queue;
         private TextWriter _writer;
         private Thread _thread;
         private CancellationTokenSource _cts;
 
-        public LoggerThread(TextWriter w)
-        {
+        public LoggerThread(TextWriter w) {
             this._queue = new BlockingCollection<string>(new ConcurrentQueue<string>());
             this._writer = w;
             this._cts = new CancellationTokenSource();
         }
 
-        public LoggerThread() : this(Console.Out) { }
+        public LoggerThread() : this(Console.Out) {
+        }
 
         public void Start() {
             // Foreground thread because we want to modify it's priority
@@ -38,9 +38,8 @@ namespace Serie3
         |--------------------------------------------------------------------------
         */
 
-        public void Add(string msg)
-        {
-            if(_thread.IsAlive)
+        public void Add(string msg) {
+            if (_thread.IsAlive)
                 _queue.Add(msg); // thread safe & non-blocking!
         }
 
@@ -51,19 +50,16 @@ namespace Serie3
         |--------------------------------------------------------------------------
         */
 
-        public void LogProcessor()
-        {
+        public void LogProcessor() {
             this.Log("Logger Thread is working in the background!");
             while (true) {
                 try {
                     string msg = _queue.Take(); // may block until an item is available!
                     this.Log(msg);
                 } catch (ThreadInterruptedException e) {
-                    
-                    if(_cts.IsCancellationRequested) // shutdown
+                    if (_cts.IsCancellationRequested) // shutdown
                         break;
                 }
-                
             }
         }
 
@@ -83,4 +79,5 @@ namespace Serie3
         }
 
     }
+
 }
