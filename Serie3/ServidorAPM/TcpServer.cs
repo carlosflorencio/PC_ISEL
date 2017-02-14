@@ -1,39 +1,26 @@
-﻿/**
- *  ISEL, LEIC, Concurrent Programming
- *
- *  Reference code for SE#3, winter 2016/17 
- *
- *  Pedro Félix, December 2016
- *
- **/
-
-using System;
-using System.Collections.Concurrent;
+﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
-using System.Security.Claims;
-using System.Text;
 using System.Threading;
 
 namespace ServidorAPM {
 
     class ConnectionState {
 
-        public readonly TcpClient client;
+        public readonly TcpClient client; // needed to close
         public readonly int id;
         public readonly ISet<string> acquiredKeys = new HashSet<string>();
         public readonly NetworkStream stream;
+        public readonly TcpListener server; // needed to perform disconnect action
 
         // Temporary Buffer for reads
         public byte[] buffer = new byte[4 * 1204];
         public LoggerThread log;
 
-        public ConnectionState(int cid, TcpClient c, LoggerThread logger) {
+        public ConnectionState(int cid, TcpListener s, TcpClient c, LoggerThread logger) {
             this.id = cid;
+            this.server = s;
             this.log = logger;
             this.client = c;
             this.stream = this.client.GetStream();
@@ -75,8 +62,11 @@ namespace ServidorAPM {
         public void Run() {
             var server = new TcpListener(IPAddress.Parse(LocalIp), LocalPort);
 
-            BeginListen(server);
+            server.Start(); // start listen for clients
             logger.Add($"Server is listening on {LocalIp}:{LocalPort}");
+
+            // First accept
+            server.BeginAcceptTcpClient(OnAcceptEntryPoint, Tuple.Create(server, logger));
 
             logger.Add("Press <enter> to shutdown the server...");
             Console.ReadLine();
@@ -84,63 +74,61 @@ namespace ServidorAPM {
             server.Stop();
         }
 
-        private void BeginListen(TcpListener server) {
-            server.Start(); // start listen for clients
 
-            AsyncCallback onAcceptProcessing = null;
-
-            // Fix recursive calls
-            AsyncCallback onAcceptEntryPoint = ar => {
-                if (!ar.CompletedSynchronously) {
-                    onAcceptProcessing(ar);
+        // Fix recursive calls
+        private static void OnAcceptEntryPoint(IAsyncResult ar) {
+            if (!ar.CompletedSynchronously) {
+                OnAcceptProcessing(ar);
+            } else {
+                rcounter.Value += 1;
+                if (rcounter.Value > MaxNestedIoCallbacks) {
+                    ThreadPool.QueueUserWorkItem(_ => { OnAcceptProcessing(ar); });
                 } else {
-                    rcounter.Value += 1;
-                    if (rcounter.Value > MaxNestedIoCallbacks) {
-                        ThreadPool.QueueUserWorkItem(_ => { onAcceptProcessing(ar); });
-                    } else {
-                        onAcceptProcessing(ar);
-                    }
-                    rcounter.Value -= 1;
+                    OnAcceptProcessing(ar);
                 }
-            };
+                rcounter.Value -= 1;
+            }
+        }
 
-            // Process accept
-            onAcceptProcessing = ar => {
-                try {
-                    var client = server.EndAcceptTcpClient(ar);
-                    logger.Add($"Client accepted with id {currentClientId}");
+        // Process accept
+        private static void OnAcceptProcessing(IAsyncResult ar) {
+            var state = (Tuple<TcpListener, LoggerThread>) ar.AsyncState;
+            var server = state.Item1;
+            var logger = state.Item2;
 
-                    int c = Interlocked.Increment(ref activeConnections);
-                    if (c < MaxActiveConnections) {
-                        server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
-                    }
+            try {
+                var client = server.EndAcceptTcpClient(ar);
+                logger.Add($"Client accepted with id {currentClientId}");
 
-                    // Handle this client
-                    var state = new ConnectionState(currentClientId, client, logger);
-                    ClientHandlerAsync.BeginReadSocket(state);
+                int curr = Interlocked.Increment(ref activeConnections);
+                if (curr < MaxActiveConnections) {
+                    server.BeginAcceptTcpClient(OnAcceptEntryPoint, state);
+                } // not allowed? should we refuse the client instead?
 
+                // Handle this client
+                var newState = new ConnectionState(currentClientId, server, client, logger);
+                ClientHandlerAsync.BeginReadSocket(newState);
 
-                    Interlocked.Increment(ref currentClientId);
-
-                    c = Interlocked.Decrement(ref activeConnections);
-                    if (c == MaxActiveConnections - 1) {
-                        server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
-                    }
-                } catch (ObjectDisposedException) {
-                    // benign exception that occurs when the server shuts down
-                    // and stops listening the server socket
-                }
-            };
-
-            // First accept
-            server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
+                Interlocked.Increment(ref currentClientId);
+            } catch (ObjectDisposedException) {
+                // benign exception that occurs when the server shuts down
+                // and stops listening the server socket
+            }
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Accept Connection Callback
+        | Disconnect client, Accept another waiting
         |--------------------------------------------------------------------------
         */
+
+        public static void Disconnected(ConnectionState state) {
+            var c = Interlocked.Decrement(ref activeConnections);
+            if (c == MaxActiveConnections - 1) {
+                state.server.BeginAcceptTcpClient(OnAcceptEntryPoint,
+                    Tuple.Create(state.server, state.log));
+            }
+        }
 
     }
 

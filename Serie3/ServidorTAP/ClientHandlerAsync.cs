@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ServidorAPM {
+namespace ServidorTAP {
 
     class ClientHandlerAsync {
 
@@ -19,55 +19,42 @@ namespace ServidorAPM {
 
         /*
         |--------------------------------------------------------------------------
-        | Read Async
+        | Process Client
         |--------------------------------------------------------------------------
         */
 
-        public static void BeginReadSocket(ConnectionState st) {
-            AsyncCallback onEndReadAsyncCallback = ar => {
-                var state = (ConnectionState) ar.AsyncState;
-
-                try {
-                    // The BeginRead method reads as much data as is available, 
-                    // up to the number of bytes specified by the size parameter.
-                    // Since our buffer is larger than the longest client message,
-                    // we dont need to read again
-                    var len = state.stream.EndRead(ar);
+        public static async Task ProcessConnectionAsync(ConnectionState state) {
+            try {
+                do {
+                    int len = await state.stream.ReadAsync(state.buffer, 0, state.buffer.Length);
 
                     if (len <= 0) { // client disconnected
                         Log(state, $"Client is disconnected");
                         ClientDisconnect(state);
-                        return;
+                        break;
                     }
 
                     var line = Encoding.ASCII.GetString(state.buffer, 0, len).Trim();
 
                     Log(state, $"Received {line}");
+
                     var parts = line.Split(' ');
                     if (parts.Length != 2) {
-                        StartWriteAsync("nack: invalid command", state);
-                        return;
+                        await WriteAsync("nack: invalid command", state);
+                        continue;
                     }
 
                     try {
-                        HandleCommand(parts[0], parts[1], state); // May block this thread
-                        StartWriteAsync("ack", state);
+                        HandleCommand(parts[0], parts[1], state); // May block this thread :(
+                        await WriteAsync("ack", state);
                     } catch (CommandException e) {
-                        StartWriteAsync($"nack: {e.Message}", state);
+                        await WriteAsync($"nack: {e.Message}", state);
                     }
-                } catch (IOException e) {
-                    // The socket was closed!
-                    Log(state, "Exception: {0}", e);
-                    ClientDisconnect(state);
-                }
-            };
-
-            try {
-                st.stream.BeginRead(st.buffer, 0, st.buffer.Length, onEndReadAsyncCallback, st);
+                } while (true);
             } catch (IOException e) {
                 // The socket was closed!
-                Log(st, "Exception: {0}", e);
-                ClientDisconnect(st);
+                Log(state, "Exception: {0}", e);
+                ClientDisconnect(state);
             }
         }
 
@@ -78,30 +65,10 @@ namespace ServidorAPM {
         |--------------------------------------------------------------------------
         */
 
-        private static void StartWriteAsync(string msg, ConnectionState state) {
-            AsyncCallback onEndWriteAsync = ar => {
-                var s = (ConnectionState) ar.AsyncState;
-
-                try {
-                    s.stream.EndWrite(ar);
-
-                    BeginReadSocket(s);
-                } catch (IOException e) {
-                    // The socket was closed!
-                    Log(s, "Exception: {0}", e);
-                    ClientDisconnect(s);
-                }
-            };
-
+        private static Task WriteAsync(string msg, ConnectionState state) {
             var bytes = Encoding.ASCII.GetBytes(msg + Environment.NewLine);
 
-            try {
-                state.stream.BeginWrite(bytes, 0, bytes.Length, onEndWriteAsync, state);
-            } catch (IOException e) {
-                // The socket was closed!
-                Log(state, "Exception: {0}", e);
-                ClientDisconnect(state);
-            }
+            return state.stream.WriteAsync(bytes, 0, bytes.Length);
         }
 
         /*
@@ -124,8 +91,6 @@ namespace ServidorAPM {
             state.client.Close();
             Log(state, "client ended");
             // state object will eventually be garbage collected
-
-            Server.Disconnected(state);
         }
 
         /*
