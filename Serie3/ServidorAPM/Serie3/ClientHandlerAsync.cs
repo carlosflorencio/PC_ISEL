@@ -23,67 +23,80 @@ namespace Serie3 {
         |--------------------------------------------------------------------------
         */
 
-        public static void BeginReadSocket(ConnectionState state) {
-            state.stream.BeginRead(state.buffer, 0, state.buffer.Length, EndReadSocket, state);
-        }
-
-        private static void EndReadSocket(IAsyncResult ar) {
-            var state = (ConnectionState) ar.AsyncState;
-
-            try {
-                // The BeginRead method reads as much data as is available, 
-                // up to the number of bytes specified by the size parameter.
-                // Since our buffer is larger than the longest client message,
-                // we dont need to read again
-                var len = state.stream.EndRead(ar);
-
-                if (len <= 0) { // client disconnected
-                    Log(state, $"Client is disconnected");
-                    ClientDisconnect(state);
-                    return;
-                }
-
-                var line = Encoding.ASCII.GetString(state.buffer, 0, len).Trim();
-
-                Log(state, $"Received {line}");
-                var parts = line.Split(' ');
-                if (parts.Length != 2) {
-                    StartWriteAsync("nack: invalid command", state);
-                    return;
-                }
+        public static void BeginReadSocket(ConnectionState st) {
+            AsyncCallback onEndReadAsyncCallback = ar => {
+                var state = (ConnectionState) ar.AsyncState;
 
                 try {
-                    HandleCommand(parts[0], parts[1], state); // May block this thread
-                    StartWriteAsync("ack", state);
-                } catch (CommandException e) {
-                    StartWriteAsync($"nack: {e.Message}", state);
+                    // The BeginRead method reads as much data as is available, 
+                    // up to the number of bytes specified by the size parameter.
+                    // Since our buffer is larger than the longest client message,
+                    // we dont need to read again
+                    var len = state.stream.EndRead(ar);
+
+                    if (len <= 0) { // client disconnected
+                        Log(state, $"Client is disconnected");
+                        ClientDisconnect(state);
+                        return;
+                    }
+
+                    var line = Encoding.ASCII.GetString(state.buffer, 0, len).Trim();
+
+                    Log(state, $"Received {line}");
+                    var parts = line.Split(' ');
+                    if (parts.Length != 2) {
+                        StartWriteAsync("nack: invalid command", state);
+                        return;
+                    }
+
+                    try {
+                        HandleCommand(parts[0], parts[1], state); // May block this thread
+                        StartWriteAsync("ack", state);
+                    } catch (CommandException e) {
+                        StartWriteAsync($"nack: {e.Message}", state);
+                    }
+                } catch (IOException e) {
+                    // The socket was closed!
+                    Log(state, "Exception: {0}", e);
+                    ClientDisconnect(state);
                 }
+            };
+
+            try {
+                st.stream.BeginRead(st.buffer, 0, st.buffer.Length, onEndReadAsyncCallback, st);
             } catch (IOException e) {
                 // The socket was closed!
-                Log(state, "Exception: {0}", e);
-                ClientDisconnect(state);
+                Log(st, "Exception: {0}", e);
+                ClientDisconnect(st);
             }
         }
+
 
         /*
         |--------------------------------------------------------------------------
         | Write Async
         |--------------------------------------------------------------------------
         */
+
         private static void StartWriteAsync(string msg, ConnectionState state) {
+            AsyncCallback onEndWriteAsync = ar => {
+                var s = (ConnectionState) ar.AsyncState;
+
+                try {
+                    s.stream.EndWrite(ar);
+
+                    BeginReadSocket(s);
+                } catch (IOException e) {
+                    // The socket was closed!
+                    Log(s, "Exception: {0}", e);
+                    ClientDisconnect(s);
+                }
+            };
+
             var bytes = Encoding.ASCII.GetBytes(msg + Environment.NewLine);
 
-            state.stream.BeginWrite(bytes, 0, bytes.Length, EndWriteAsync, state);
-        }
-
-        private static void EndWriteAsync(IAsyncResult ar) {
-            var state = (ConnectionState) ar.AsyncState;
-
             try {
-                state.stream.EndWrite(ar);
-
-                BeginReadSocket(state);
-
+                state.stream.BeginWrite(bytes, 0, bytes.Length, onEndWriteAsync, state);
             } catch (IOException e) {
                 // The socket was closed!
                 Log(state, "Exception: {0}", e);
@@ -120,14 +133,14 @@ namespace Serie3 {
         */
 
         private static void HandleCommand(string command, string key, ConnectionState state) {
-            var semaphore = map.GetOrAdd(key, _ => new SemaphoreSlim(MaxRequestsInRegion));
+            var region = map.GetOrAdd(key, _ => new SemaphoreSlim(MaxRequestsInRegion));
             if (command == "enter") {
                 // This will block until the client can enter the region
-                semaphore.Wait();
+                region.Wait();
                 state.acquiredKeys.Add(key);
                 Log(state, $"Acquired key {key}");
             } else if (command == "leave") {
-                semaphore.Release();
+                region.Release();
                 state.acquiredKeys.Remove(key);
                 Log(state, $"Released key {key}");
             } else {
@@ -136,7 +149,7 @@ namespace Serie3 {
         }
 
         private static void Log(ConnectionState state, string fmt, params object[] prms) {
-           state.log.Add($"[{state.id}]" + string.Format(fmt, prms));
+            state.log.Add($"[{state.id}]" + string.Format(fmt, prms));
         }
 
     }

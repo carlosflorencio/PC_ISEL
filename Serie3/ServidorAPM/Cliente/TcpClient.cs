@@ -18,7 +18,7 @@ namespace ClientTcp
 {
     class ClientProgram
     {
-        private const int NOfClients = 100;
+        private const int NOfClients = 10;
         
         static void Main(string[] args)
         {            

@@ -43,7 +43,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ClientHandler.cs" />
     <Compile Include="ClientHandlerAsync.cs" />
     <Compile Include="CommandException.cs" />
     <Compile Include="LoggerThread.cs" />

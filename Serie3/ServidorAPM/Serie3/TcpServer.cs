@@ -32,8 +32,6 @@ namespace Serie3 {
         public byte[] buffer = new byte[4 * 1204];
         public LoggerThread log;
 
-        public StringBuilder sb = new StringBuilder();
-
         public ConnectionState(int cid, TcpClient c, LoggerThread logger) {
             this.id = cid;
             this.log = logger;
@@ -43,25 +41,18 @@ namespace Serie3 {
 
     }
 
-    class ThrottledRegion {
-
-        public SemaphoreSlim Semaphore;
-        public volatile int WaitingCount;
-
-    }
-
     class Server {
 
         // Constants
         private const int MaxNestedIoCallbacks = 10;
-        private const int MaxActiveConnections = 101;
+        private const int MaxActiveConnections = 10;
         private const int LocalPort = 8888;
         private const string LocalIp = "0.0.0.0";
 
         // Count the number of nested accept callbacks on each thread
         private static ThreadLocal<int> rcounter = new ThreadLocal<int>();
 
-        // Number of active connections and the maximum allowed.
+        // Number of active connections
         private static int activeConnections;
 
         // Client id (0, 1, 2, 3..) Incremented with Interlocked
@@ -87,7 +78,7 @@ namespace Serie3 {
             BeginListen(server);
             logger.Add($"Server is listening on {LocalIp}:{LocalPort}");
 
-            Console.WriteLine("Press <enter> to shutdown the server...");
+            logger.Add("Press <enter> to shutdown the server...");
             Console.ReadLine();
 
             server.Stop();
@@ -100,14 +91,11 @@ namespace Serie3 {
 
             // Fix recursive calls
             AsyncCallback onAcceptEntryPoint = ar => {
-                logger.Add("!!!!!!!!!!!Sincrono: " + ar.CompletedSynchronously + " " + Thread.CurrentThread.ManagedThreadId);
                 if (!ar.CompletedSynchronously) {
                     onAcceptProcessing(ar);
                 } else {
-                    logger.Add("!!!!!!!!! ASSINCRONO");
                     rcounter.Value += 1;
                     if (rcounter.Value > MaxNestedIoCallbacks) {
-                        logger.Add("!!!!!!!!!!MAX NESTED CALLBACKS!!! " + rcounter.Value);
                         ThreadPool.QueueUserWorkItem(_ => { onAcceptProcessing(ar); });
                     } else {
                         onAcceptProcessing(ar);
@@ -118,27 +106,32 @@ namespace Serie3 {
 
             // Process accept
             onAcceptProcessing = ar => {
-                var client = server.EndAcceptTcpClient(ar);
-                logger.Add($"Client accepted with id {currentClientId}");
+                try {
+                    var client = server.EndAcceptTcpClient(ar);
+                    logger.Add($"Client accepted with id {currentClientId}");
 
-                logger.Add(
-                    $"ThreadPool: {Thread.CurrentThread.IsThreadPoolThread} ThreadId: {Thread.CurrentThread.ManagedThreadId}");
+                    logger.Add(
+                        $"ThreadPool: {Thread.CurrentThread.IsThreadPoolThread} ThreadId: {Thread.CurrentThread.ManagedThreadId}");
 
-                int c = Interlocked.Increment(ref activeConnections);
-                if (c < MaxActiveConnections) {
-                    server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
-                }
+                    int c = Interlocked.Increment(ref activeConnections);
+                    if (c < MaxActiveConnections) {
+                        server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
+                    }
 
-                // Handle this client
-                var state = new ConnectionState(currentClientId, client, logger);
-                ClientHandlerAsync.BeginReadSocket(state);
+                    // Handle this client
+                    var state = new ConnectionState(currentClientId, client, logger);
+                    ClientHandlerAsync.BeginReadSocket(state);
 
 
-                Interlocked.Increment(ref currentClientId);
+                    Interlocked.Increment(ref currentClientId);
 
-                c = Interlocked.Decrement(ref activeConnections);
-                if (c == MaxActiveConnections - 1) {
-                    server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
+                    c = Interlocked.Decrement(ref activeConnections);
+                    if (c == MaxActiveConnections - 1) {
+                        server.BeginAcceptTcpClient(onAcceptEntryPoint, null);
+                    }
+                } catch (ObjectDisposedException) {
+                    // benign exception that occurs when the server shuts down
+                    // and stops listening the server socket
                 }
             };
 
@@ -158,12 +151,16 @@ namespace Serie3 {
     class ServerProgram {
 
         public static void Main(string[] args) {
+
             var logger = new LoggerThread();
             logger.Start();
+
             var server = new Server(logger);
 
-            server.Run();
-            // logger thread will finish with the process
+            server.Run(); // returns after key enter
+
+            // logger has a foreground thread, we have to force it to close
+            logger.shutdown();
         }
 
     }
