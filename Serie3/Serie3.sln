@@ -9,6 +9,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TcpClient", "TcpClient\TcpC
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ServidorTAP", "ServidorTAP\ServidorTAP.csproj", "{34170BC0-E373-4664-82E4-022002C5AE75}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileSearch", "FileSearch\FileSearch.csproj", "{BD82A628-806E-46C2-9E3D-7E26C37C5936}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileSearchUI", "FileSearchUI\FileSearchUI.csproj", "{B82F4A66-C6FD-4054-BD05-88701F8DE931}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +31,14 @@ Global
 		{34170BC0-E373-4664-82E4-022002C5AE75}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{34170BC0-E373-4664-82E4-022002C5AE75}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{34170BC0-E373-4664-82E4-022002C5AE75}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD82A628-806E-46C2-9E3D-7E26C37C5936}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD82A628-806E-46C2-9E3D-7E26C37C5936}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD82A628-806E-46C2-9E3D-7E26C37C5936}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD82A628-806E-46C2-9E3D-7E26C37C5936}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B82F4A66-C6FD-4054-BD05-88701F8DE931}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B82F4A66-C6FD-4054-BD05-88701F8DE931}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B82F4A66-C6FD-4054-BD05-88701F8DE931}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B82F4A66-C6FD-4054-BD05-88701F8DE931}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
