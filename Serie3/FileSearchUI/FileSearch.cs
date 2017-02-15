@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FileSearch {
+namespace FileSearchUI {
 
     class SearchResult {
 
@@ -21,12 +21,19 @@ namespace FileSearch {
 
         // Caller must catch the AggregateException
         public static Task<SearchResult> Find(string folder, string ext,
-            string sequence, CancellationToken token) {
+            string sequence, CancellationToken token, IProgress<CustomProgress> progress) {
             var task = Task.Factory.StartNew<SearchResult>(() => {
                 var result = new SearchResult();
 
-                // get all the files in that directory to count
-                var files = Directory.GetFiles(folder);
+                string[] files = null;
+                try {
+                    // get all the files in that directory (& subdirectories) to count
+                    files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
+                } catch (UnauthorizedAccessException) {
+                    // if we try to access a subdirectory which we don't have permission
+                    // forget subdirectories, just search in the root folder
+                    files = Directory.GetFiles(folder);
+                }
 
                 result.totalFiles = files.Length; // save the count
 
@@ -46,15 +53,21 @@ namespace FileSearch {
                 Parallel.ForEach(filesWithExtension, (file, loop) => {
                     semaphore.Wait(token); // cancel the wait if token is signaled
 
+                    var contains = false;
+
                     using (StreamReader reader = File.OpenText(file)) {
                         string line = null;
                         while ((line = reader.ReadLine()) != null) {
                             if (line.Contains(sequence)) {
+                                contains = true;
                                 result.files.Add(file);
                                 break;
                             }
                         }
                     }
+
+                    var state = new CustomProgress(result.totalFilesWithExtension, contains ? file : null);
+                    progress.Report(state); // will run in the ui thread
 
                     if (token.IsCancellationRequested) {
                         loop.Stop(); // cancel all the remaining loop tasks

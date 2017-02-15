@@ -36,9 +36,10 @@
             this.textBox3 = new System.Windows.Forms.TextBox();
             this.label2 = new System.Windows.Forms.Label();
             this.button2 = new System.Windows.Forms.Button();
-            this.button3 = new System.Windows.Forms.Button();
+            this.cancelButton = new System.Windows.Forms.Button();
             this.progressBar1 = new System.Windows.Forms.ProgressBar();
             this.listBox1 = new System.Windows.Forms.ListBox();
+            this.results = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // button1
@@ -49,7 +50,7 @@
             this.button1.TabIndex = 0;
             this.button1.Text = "Choose Folder";
             this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
+            this.button1.Click += new System.EventHandler(this.folder_Click);
             // 
             // textBox1
             // 
@@ -99,41 +100,56 @@
             this.button2.TabIndex = 6;
             this.button2.Text = "Search";
             this.button2.UseVisualStyleBackColor = true;
-            this.button2.Click += new System.EventHandler(this.button2_Click);
+            this.button2.Click += new System.EventHandler(this.search_Click);
             // 
-            // button3
+            // cancelButton
             // 
-            this.button3.Enabled = false;
-            this.button3.Location = new System.Drawing.Point(297, 109);
-            this.button3.Name = "button3";
-            this.button3.Size = new System.Drawing.Size(91, 34);
-            this.button3.TabIndex = 7;
-            this.button3.Text = "Cancel";
-            this.button3.UseVisualStyleBackColor = true;
+            this.cancelButton.Enabled = false;
+            this.cancelButton.Location = new System.Drawing.Point(297, 109);
+            this.cancelButton.Name = "cancelButton";
+            this.cancelButton.Size = new System.Drawing.Size(91, 34);
+            this.cancelButton.TabIndex = 7;
+            this.cancelButton.Text = "Cancel";
+            this.cancelButton.UseVisualStyleBackColor = true;
+            this.cancelButton.Click += new System.EventHandler(this.button3_Click);
             // 
             // progressBar1
             // 
             this.progressBar1.Location = new System.Drawing.Point(30, 158);
             this.progressBar1.Name = "progressBar1";
             this.progressBar1.Size = new System.Drawing.Size(525, 23);
+            this.progressBar1.Step = 1;
             this.progressBar1.TabIndex = 8;
             // 
             // listBox1
             // 
             this.listBox1.FormattingEnabled = true;
-            this.listBox1.Location = new System.Drawing.Point(30, 205);
+            this.listBox1.Location = new System.Drawing.Point(30, 213);
             this.listBox1.Name = "listBox1";
             this.listBox1.Size = new System.Drawing.Size(526, 212);
             this.listBox1.TabIndex = 9;
+            // 
+            // results
+            // 
+            this.results.AutoSize = true;
+            this.results.Location = new System.Drawing.Point(155, 191);
+            this.results.Name = "results";
+            this.results.Size = new System.Drawing.Size(45, 13);
+            this.results.TabIndex = 10;
+            this.results.Text = "Results:";
+            this.results.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.results.Visible = false;
+            this.results.Click += new System.EventHandler(this.results_Click);
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(568, 437);
+            this.Controls.Add(this.results);
             this.Controls.Add(this.listBox1);
             this.Controls.Add(this.progressBar1);
-            this.Controls.Add(this.button3);
+            this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.textBox3);
@@ -160,9 +176,10 @@
         private System.Windows.Forms.TextBox textBox3;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Button button2;
-        private System.Windows.Forms.Button button3;
+        private System.Windows.Forms.Button cancelButton;
         private System.Windows.Forms.ProgressBar progressBar1;
         private System.Windows.Forms.ListBox listBox1;
+        private System.Windows.Forms.Label results;
     }
 }
 
